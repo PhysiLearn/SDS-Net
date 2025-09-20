@@ -706,7 +706,7 @@ class SDSNet(nn.Module):
 
 
 if __name__ == '__main__':
-    config_vit = get_SDSNet_config()
+    config_vit = get_config()
     model = SDSNet(config_vit, mode='train', deepsuper=True)
     model = model
     inputs = torch.rand(1, 1, 256, 256)
