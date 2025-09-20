@@ -16,22 +16,7 @@ from einops import rearrange
 import numbers
 from thop import profile
 from torch.nn.functional import normalize
-
-def get_config():
-    config = ml_collections.ConfigDict()
-    config.transformer = ml_collections.ConfigDict()
-    config.KV_size = 224  
-    config.transformer.num_heads = 4
-    config.transformer.num_layers = 4
-    config.patch_sizes = [16, 8, 4]
-    config.base_channel = 32  
-    config.n_classes = 1
-
-    # ********** useless **********
-    config.transformer.embeddings_dropout_rate = 0.1
-    config.transformer.attention_dropout_rate = 0.1
-    config.transformer.dropout_rate = 0
-    return config
+from model.Config import get_config
 
 class Backbone(nn.Module):
     def __init__(self, n_channels, in_channels, num_blocks=3):
@@ -703,10 +688,12 @@ class SDSNet(nn.Module):
                 return torch.sigmoid(out)
         else:
             return torch.sigmoid(out)
-
+def get_SDSNet_config():
+    """Get the default configuration for SDSNet model"""
+    return get_config()
 
 if __name__ == '__main__':
-    config_vit = get_config()
+    config_vit = get_SDSNet_config()
     model = SDSNet(config_vit, mode='train', deepsuper=True)
     model = model
     inputs = torch.rand(1, 1, 256, 256)
