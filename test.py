@@ -502,3 +502,13 @@ if __name__ == '__main__':
                     print('\n')
                     opt.f.write('\n')
         opt.f.close()
+
+
+def main():
+    """Main function for command-line entry point."""
+    # The argument parsing and testing logic is already handled above
+    pass
+
+
+if __name__ == '__main__':
+    main()

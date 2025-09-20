@@ -52,15 +52,49 @@ The framework supports multiple IRSTD datasets:
 
 ### 1. Environment Setup
 
+#### Option A: Using pip with pyproject.toml (Recommended)
+
+```bash
+# Clone the repository
+git clone https://github.com/PhysiLearn/SDS-Net.git
+cd SDS-Net
+
+# Create virtual environment (recommended)
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install the package with dependencies
+pip install .
+
+# Or install in editable mode for development
+pip install -e .
+
+```
+
+#### Option B: Using conda (Alternative)
+
 ```bash
 # Create conda environment
 conda create -n sdsnet python=3.8
 conda activate sdsnet
 
-# Install dependencies
+# Install PyTorch (adjust for your CUDA version)
+conda install pytorch torchvision pytorch-cuda=11.8 -c pytorch -c nvidia
+
+# Install other dependencies
+pip install einops ml_collections thop
+pip install scikit-image Pillow opencv-python
+pip install tensorboard tqdm matplotlib
+```
+
+#### Option C: Manual Installation
+
+```bash
+# Install core dependencies
 pip install torch torchvision
 pip install einops ml_collections thop
 pip install scikit-image Pillow opencv-python
+pip install tensorboard tqdm matplotlib
 ```
 
 ### 2. Data Preparation
@@ -91,6 +125,12 @@ datasets/
 
 ### 3. Training
 
+#### Using the command-line entry point (after pip install):
+```bash
+sds-train --dataset_names ['NUDT-SIRST'] --model_names ['SDSNet'] --epochs 1000
+```
+
+#### Using the Python script directly:
 ```bash
 python train.py --dataset_names ['NUDT-SIRST'] --model_names ['SDSNet'] --epochs 1000
 ```
@@ -101,9 +141,18 @@ python train.py --dataset_names ['NUDT-SIRST'] --model_names ['SDSNet'] --epochs
 - `--batchSize`: Training batch size (default: 16)
 - `--patchSize`: Training patch size (default: 256)
 - `--epochs`: Number of training epochs (default: 1000)
+- `--dataset_dir`: Dataset directory path (default: './datasets')
+- `--save`: Checkpoint save path (default: './log')
+- `--log_dir`: TensorBoard log directory (default: './otherlogs/SDSNet')
 
 ### 4. Testing
 
+#### Using the command-line entry point (after pip install):
+```bash
+sds-test --dataset_names ['NUDT-SIRST'] --model_names ['SDSNet'] --pth_dirs ['NUDT-SIRST/SDSNet_673_best.pth.tar']
+```
+
+#### Using the Python script directly:
 ```bash
 python test.py --dataset_names ['NUDT-SIRST'] --model_names ['SDSNet'] --pth_dirs ['NUDT-SIRST/SDSNet_673_best.pth.tar']
 ```
@@ -122,6 +171,7 @@ SDS-Net/
 ├── metrics.py            # Evaluation metrics
 ├── utils.py              # Utility functions
 ├── warmup_scheduler.py   # Learning rate scheduling
+├── pyproject.toml        # Modern Python project configuration
 └── README.md             # This file
 ```
 
@@ -166,7 +216,7 @@ If you find this work useful, please consider citing:
 
 ## Contact
 
-For questions or issues regarding SDS-Net, please contact the development team.
+For questions or issues regarding SDS-Net, please contact the development team or open an issue on [GitHub](https://github.com/PhysiLearn/SDS-Net/issues).
 
 ## Acknowledgments
 

@@ -1,0 +1,138 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sds-net"
+version = "1.0.0"
+description = "SDS-Net: Shallow-Deep Synergism-detection Network for Infrared Small Target Detection"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "PhysiLearn Group", email = "c@ujs.edu.cn"}
+]
+maintainers = [
+    {name = "PhysiLearn Group", email = "c@ujs.edu.cn"}
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering :: Image Recognition",
+    "Topic :: Scientific/Engineering :: Image Processing",
+]
+requires-python = ">=3.8"
+dependencies = [
+    "torch>=1.9.0",
+    "torchvision>=0.10.0",
+    "einops>=0.4.0",
+    "ml-collections>=0.1.0",
+    "thop>=0.1.0",
+    "scikit-image>=0.18.0",
+    "Pillow>=8.0.0",
+    "opencv-python>=4.5.0",
+    "numpy>=1.21.0",
+    "matplotlib>=3.3.0",
+    "tqdm>=4.62.0",
+    "tensorboard>=2.7.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=6.0.0",
+    "pytest-cov>=2.12.0",
+    "black>=21.0.0",
+    "flake8>=3.9.0",
+    "mypy>=0.910",
+    "pre-commit>=2.15.0",
+]
+docs = [
+    "sphinx>=4.0.0",
+    "sphinx-rtd-theme>=0.5.0",
+    "myst-parser>=0.15.0",
+]
+training = [
+    "wandb>=0.12.0",
+    "tensorboard>=2.7.0",
+]
+evaluation = [
+    "seaborn>=0.11.0",
+    "plotly>=5.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/PhysiLearn/SDS-Net"
+Repository = "https://github.com/PhysiLearn/SDS-Net"
+Documentation = "https://github.com/PhysiLearn/SDS-Net#readme"
+"Bug Tracker" = "https://github.com/PhysiLearn/SDS-Net/issues"
+"Paper" = "https://ieeexplore.ieee.org/document/11078296"
+
+[project.scripts]
+sds-train = "train:main"
+sds-test = "test:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["model*"]
+
+[tool.setuptools.package-data]
+"*" = ["*.py", "*.yaml", "*.yml", "*.json"]
+
+[tool.black]
+line-length = 88
+target-version = ['py38']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | build
+  | dist
+  | __pycache__
+)/
+'''
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "gpu: marks tests that require GPU",
+]
+
+[tool.coverage.run]
+source = ["model", "utils", "dataset", "metrics"]
+omit = [
+    "*/tests/*",
+    "*/test_*.py",
+    "*/__pycache__/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "if __name__ == .__main__.:",
+]

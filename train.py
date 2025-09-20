@@ -302,3 +302,13 @@ if __name__ == '__main__':
             train()
             print('\n')
             opt.f.close()
+
+
+def main():
+    """Main function for command-line entry point."""
+    # The argument parsing and training logic is already handled above
+    pass
+
+
+if __name__ == '__main__':
+    main()
