@@ -14,33 +14,29 @@ import torch
 from skimage import measure
 
 
-def _normalize_target_shape(target):
-    """Normalize target tensor shape to 4D for consistent processing.
-
-    Args:
-        target: Target tensor (3D or 4D)
-
-    Returns:
-        Normalized target tensor
-    """
-    target = _normalize_target_shape(target)
-    return target
-
-
 def cal_tp_pos_fp_neg(output, target, nclass, score_thresh):
     predict = (output > score_thresh).float()
-    target = _normalize_target_shape(target)
-    # 现在predict中高于阈值的部分为全1矩阵   target是GT
+    if len(target.shape) == 3:
+        print('????')  # Add a dimension to make the size of target consistent with output
+        target = target.unsqueeze(dim=0)
+        # target = np.expand_dims(target.float(), axis=1)
+        target.to('cuda', torch.float)
+
+    elif len(target.shape) == 4:
+        target = target.float()
+    else:
+        raise ValueError("Unknown target dimension")
+    # Now the part of predict higher than the threshold is a matrix of all 1s, target is GT
 
     intersection = predict * ((predict == target).float())
 
-    tp = intersection.sum()  # 对的预测为对的
-    fp = (predict * ((predict != target).float())).sum()  # 错的预测为对的 虚警像素数
-    tn = ((1 - predict) * ((predict == target).float())).sum()  # 错的预测为错的
-    fn = (((predict != target).float()) * (1 - predict)).sum()  # 对的预测为错的
-    pos = tp + fn  # 标签中 阳性的个数
-    neg = fp + tn  # 标签中 阴性的个数
-    class_pos = tp + fp  # 检测出的个数
+    tp = intersection.sum()  # True positive: correct prediction is positive
+    fp = (predict * ((predict != target).float())).sum()  # False positive: incorrect prediction is positive, number of false alarm pixels
+    tn = ((1 - predict) * ((predict == target).float())).sum()  # True negative: incorrect prediction is negative
+    fn = (((predict != target).float()) * (1 - predict)).sum()  # False negative: correct prediction is negative
+    pos = tp + fn  # Number of positives in the label
+    neg = fp + tn  # Number of negatives in the label
+    class_pos = tp + fp  # Number of detected positives
 
     return tp, pos, fp, neg, class_pos
 
@@ -123,7 +119,7 @@ def batch_intersection_union_n(output, target, nclass, score_thresh):
         target = target.cpu().numpy().astype('int64')  # T
     else:
         raise ValueError("Unknown target dimension")
-    intersection = predict * (predict == target)  # TP  交集
+    intersection = predict * (predict == target)  # TP intersection
 
     num_sample = intersection.shape[0]
     area_inter_arr = np.zeros(num_sample)
@@ -155,8 +151,8 @@ class ROCMetric05():
     """
 
     def __init__(self, nclass, bins):
-        # bin的意义实际上是确定ROC曲线上的threshold取多少个离散值
-        # nclass :有几个类别 红外弱小目标检测只有一个类别
+        # The meaning of bin is actually to determine how many discrete values the threshold on the ROC curve takes
+        # nclass: how many classes, infrared small target detection has only one class
         super(ROCMetric05, self).__init__()
         self.nclass = nclass
         self.bins = bins
@@ -167,7 +163,7 @@ class ROCMetric05():
         self.class_pos = np.zeros(self.bins + 1)
         # self.reset()
 
-    # 网络输入的结果和标签 计算两者之前的东西
+    # The results and labels of the network input, calculate the metrics between them
     def update(self, preds, labels):
         for iBin in range(self.bins + 1):
             # score_thresh = (iBin + 0.0) / self.bins
@@ -176,7 +172,7 @@ class ROCMetric05():
             i_tp, i_pos, i_fp, i_neg, i_class_pos = cal_tp_pos_fp_neg(preds, labels, self.nclass, score_thresh)
             self.tp_arr[iBin] += i_tp
             self.pos_arr[iBin] += i_pos
-            self.fp_arr[iBin] += i_fp  # 虚警像素数
+            self.fp_arr[iBin] += i_fp  # Number of false alarm pixels
             self.neg_arr[iBin] += i_neg
             self.class_pos[iBin] += i_class_pos
 
@@ -205,7 +201,7 @@ class mIoU():
         self.reset()
 
     def update(self, preds, labels):
-        correct, labeled = batch_pix_accuracy(preds, labels)  # labeled: GT中目标的像素数目   correct:预测正确的像素数
+        correct, labeled = batch_pix_accuracy(preds, labels)  # labeled: number of target pixels in GT, correct: number of correctly predicted pixels
         inter, union = batch_intersection_union(preds, labels)
         self.total_correct += correct
         self.total_label += labeled
@@ -283,7 +279,12 @@ class PDFA():
 
 
 def batch_pix_accuracy(output, target):
-    target = _normalize_target_shape(target)
+    if len(target.shape) == 3:
+        target = np.expand_dims(target.float(), axis=1)
+    elif len(target.shape) == 4:
+        target = target.float()
+    else:
+        raise ValueError("Unknown target dimension")
 
     assert output.shape == target.shape, "Predict and Label Shape Don't Match"
     predict = (output > 0).float()
@@ -298,7 +299,12 @@ def batch_intersection_union(output, target):
     maxi = 1
     nbins = 1
     predict = (output > 0).float()
-    target = _normalize_target_shape(target)
+    if len(target.shape) == 3:
+        target = np.expand_dims(target.float(), axis=1)
+    elif len(target.shape) == 4:
+        target = target.float()
+    else:
+        raise ValueError("Unknown target dimension")
     intersection = predict * ((predict == target).float())
 
     area_inter, _ = np.histogram(intersection.cpu(), bins=nbins, range=(mini, maxi))
@@ -330,8 +336,8 @@ class PD_FA():
         label = measure.label(labelss, connectivity=2)
         coord_label = measure.regionprops(label)
 
-        self.target += len(coord_label)  # 目标总数  直接就搞GT的连通域个数
-        self.image_area_total = []  # 图像中预测的区域列表
+        self.target += len(coord_label)  # Total number of targets, directly use the number of connected components in GT
+        self.image_area_total = []  # List of predicted regions in the image
         self.image_area_match = []
         self.distance_match = []
         self.dismatch = []
@@ -340,7 +346,7 @@ class PD_FA():
             area_image = np.array(coord_image[K].area)
             self.image_area_total.append(area_image)
 
-        for i in range(len(coord_label)):  # image 与 label 之间 根据中心点 进行连通域的确定
+        for i in range(len(coord_label)):  # Determine connected components between image and label based on centroids
             centroid_label = np.array(list(coord_label[i].centroid))
             for m in range(len(coord_image)):
                 centroid_image = np.array(list(coord_image[m].centroid))
@@ -350,15 +356,15 @@ class PD_FA():
                     self.distance_match.append(distance)
                     self.image_area_match.append(area_image)
 
-                    del coord_image[m]  # 匹配上一个之后就 清除一个
+                    del coord_image[m]  # Remove one after a match
                     break
 
-        self.dismatch = [x for x in self.image_area_total if x not in self.image_area_match]  # 在image里面 但是不在label里面
+        self.dismatch = [x for x in self.image_area_total if x not in self.image_area_match]  # In image but not in label
 
-        self.dismatch_pixel += np.sum(self.dismatch)  # Fa 虚警个数 像素的虚警
+        self.dismatch_pixel += np.sum(self.dismatch)  # Fa: number of false alarm pixels
         # print(self.dismatch_pixel)
         self.all_pixel += size[0] * size[1]
-        self.PD += len(self.distance_match)  # 如果中心点之间距离在3一下 就算Pd  所以Pd 是匹配上了的目标的个数
+        self.PD += len(self.distance_match)  # If the distance between centroids is less than 3, it's a Pd. So Pd is the number of matched targets.
 
     def get(self):
         Final_FA = self.dismatch_pixel / self.all_pixel
@@ -377,8 +383,8 @@ parser = argparse.ArgumentParser(description="PyTorch BasicIRSTD test")
 parser.add_argument('--ROC_thr', type=int, default=10, help='num')
 parser.add_argument("--model_names", default=['SDSNet'], type=list,
                     help="model_name: 'ACM', 'Ours01', 'DNANet', 'ISNet', 'ACMNet', 'Ours01', 'ISTDU-Net', 'U-Net', 'RISTDnet'")
-parser.add_argument("--pth_dirs", default=['/NUDT-SIRST/SDSNet_673_best.pth.tar'], type=list)
-parser.add_argument("--dataset_dir", default=r'/home/boss/syh/SDSNet-main/datasets/NUDT-SIRST', type=str, help="train_dataset_dir")
+parser.add_argument("--pth_dirs", default=['/NUDT-SIRST/SDSNet_628_best.pth.tar'], type=list)
+parser.add_argument("--dataset_dir", default=r'/home/boss/syh/SDSNet-main/datasets', type=str, help="train_dataset_dir")
 parser.add_argument("--dataset_names", default=['NUDT-SIRST'], type=list,
                     help="dataset_name: 'NUAA-SIRST', 'NUDT-SIRST', 'IRSTD-1K', 'SIRST3', 'NUDT-SIRST-Sea'")
 parser.add_argument("--img_norm_cfg", default=None, type=dict,
@@ -396,14 +402,14 @@ opt = parser.parse_args()
 def test():
     test_set = TestSetLoader(opt.dataset_dir, opt.train_dataset_name, opt.test_dataset_name, opt.img_norm_cfg)
     test_loader = DataLoader(dataset=test_set, num_workers=1, batch_size=1, shuffle=False)
-    # *************************固定阈值**********************
-    # 计算mIOU  完全OK
+    # *************************Fixed threshold**********************
+    # Calculate mIOU, completely OK
     IOU = mIoU()
-    # 计算nIOU 完全OK
+    # Calculate nIOU, completely OK
     nIoU_metric = SamplewiseSigmoidMetric(nclass=1, score_thresh=0)
 
-    # Calculate PD/FA metrics
-    eval_05 = PDFA()
+    # Calculate PD_FA, completely OK
+    eval_05 = PD_FA()
     ROC_05 = ROCMetric05(nclass=1, bins=10)
     config_vit = config.get_config()
 
@@ -417,8 +423,8 @@ def test():
     new_state_dict = OrderedDict()
     #
     for k, v in state_dict['state_dict'].items():
-        name = k[6:]  # remove `module.`，表面从第7个key值字符取到最后一个字符，正好去掉了module.
-        new_state_dict[name] = v  # 新字典的key值对应的value为一一对应的值。
+        name = k[6:]  # remove `module.`, which means taking characters from the 7th to the end, effectively removing 'module.'
+        new_state_dict[name] = v  # The value corresponding to the key in the new dictionary is the one-to-one value.
     net.load_state_dict(new_state_dict)
     net.eval()
     tbar = tqdm(test_loader)
@@ -438,10 +444,10 @@ def test():
 
             # Fix  threshold ##########################################################
             # IOU
-            IOU.update((pred > 0.5), gt_mask)  # 像素
+            IOU.update((pred > 0.5), gt_mask)  # pixel
             # nIOU
-            nIoU_metric.update(pred, gt_mask)  # 像素
-            eval_05.update((pred[0, 0, :, :] > opt.threshold).cpu(), gt_mask[0, 0, :, :], size)  # 目标
+            nIoU_metric.update(pred, gt_mask)  # pixel
+            eval_05.update((pred[0, 0, :, :] > opt.threshold).cpu(), gt_mask[0, 0, :, :], size)  # target
             ROC_05.update(pred, gt_mask)
             # save img
             if opt.save_img == True:
@@ -502,13 +508,3 @@ if __name__ == '__main__':
                     print('\n')
                     opt.f.write('\n')
         opt.f.close()
-
-
-def main():
-    """Main function for command-line entry point."""
-    # The argument parsing and testing logic is already handled above
-    pass
-
-
-if __name__ == '__main__':
-    main()

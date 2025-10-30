@@ -132,7 +132,7 @@ sds-train --dataset_names ['NUDT-SIRST'] --model_names ['SDSNet'] --epochs 1000
 
 #### Using the Python script directly:
 ```bash
-python train.py --dataset_names ['NUDT-SIRST'] --model_names ['SDSNet'] --epochs 1000
+python train.py 
 ```
 
 **Key Arguments:**
@@ -154,7 +154,7 @@ sds-test --dataset_names ['NUDT-SIRST'] --model_names ['SDSNet'] --pth_dirs ['NU
 
 #### Using the Python script directly:
 ```bash
-python test.py --dataset_names ['NUDT-SIRST'] --model_names ['SDSNet'] --pth_dirs ['NUDT-SIRST/SDSNet_673_best.pth.tar']
+python test.py 
 ```
 
 ## Project Structure

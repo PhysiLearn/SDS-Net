@@ -2,123 +2,212 @@ from utils import *
 import matplotlib.pyplot as plt
 import os
 import glob
+from torch.utils.data import Dataset
 
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
 
-
 class TrainSetLoader(Dataset):
-    """Unified training dataset loader with configurable augmentations.
-
-    Args:
-        dataset_dir: Root directory of datasets
-        dataset_name: Name of the specific dataset
-        patch_size: Size of patches to extract
-        img_norm_cfg: Image normalization configuration (optional)
-        add_noise: Whether to add random noise augmentation (default: False)
-        add_gamma: Whether to add gamma correction augmentation (default: False)
-        noise_std: Standard deviation of noise to add (default: 0.03)
-        gamma_range: Range for gamma correction (default: (0.5, 1.6))
-    """
-
-    def __init__(self, dataset_dir, dataset_name, patch_size, img_norm_cfg=None,
-                 add_noise=False, add_gamma=False, noise_std=0.03, gamma_range=(0.5, 1.6)):
+    def __init__(self, dataset_dir, dataset_name, patch_size, img_norm_cfg=None):
         super(TrainSetLoader).__init__()
         self.dataset_name = dataset_name
         self.dataset_dir = dataset_dir + '/' + dataset_name
         self.patch_size = patch_size
-        self.add_noise = add_noise
-        self.add_gamma = add_gamma
-        self.noise_std = noise_std
-        self.gamma_range = gamma_range
-
         with open(self.dataset_dir + '/img_idx/train_' + dataset_name + '.txt', 'r') as f:
             self.train_list = f.read().splitlines()
-
-        if img_norm_cfg is None:
+        if img_norm_cfg == None:
             self.img_norm_cfg = get_img_norm_cfg(dataset_name, dataset_dir)
         else:
             self.img_norm_cfg = img_norm_cfg
-
-        self.transform = Augmentation()
+        self.tranform = augumentation()
 
     def __getitem__(self, idx):
         try:
-            # 构建基础文件名
-            base_name = self.train_list[idx]
-            img_pattern = f"{self.dataset_dir}/images/{'._' if '._' in base_name else ''}{base_name}.png"
-            mask_pattern = f"{self.dataset_dir}/masks/{'._' if '._' in base_name else ''}{base_name}*pixels0.png"
-            
-            # 尝试查找匹配的掩码文件
-            mask_files = glob.glob(mask_pattern.replace('//', '/'))
-            if mask_files:
-                mask_path = mask_files[0]
-            else:
-                mask_path = f"{self.dataset_dir}/masks/{base_name}.png".replace('//', '/')
-            
-            img = Image.open(img_pattern.replace('//', '/')).convert('I')
-            mask = Image.open(mask_path)
+            img = Image.open((self.dataset_dir + '/images/' + self.train_list[idx] + '.png').replace('//', '/')).convert(
+                'I')  # read image base on version ”I“
+            # img = Image.open((self.dataset_dir + '/images/' + self.train_list[idx] + '.png').replace('//','/'))
+            mask = Image.open((self.dataset_dir + '/masks/' + self.train_list[idx] + '.png').replace('//', '/'))
         except:
-            try:
-                # 尝试 bmp 格式
-                img_pattern = f"{self.dataset_dir}/images/{'._' if '._' in base_name else ''}{base_name}.bmp"
-                mask_pattern = f"{self.dataset_dir}/masks/{'._' if '._' in base_name else ''}{base_name}*pixels0.bmp"
-                
-                mask_files = glob.glob(mask_pattern.replace('//', '/'))
-                if mask_files:
-                    mask_path = mask_files[0]
-                else:
-                    mask_path = f"{self.dataset_dir}/masks/{base_name}.bmp".replace('//', '/')
-                
-                img = Image.open(img_pattern.replace('//', '/')).convert('I')
-                mask = Image.open(mask_path)
-            except Exception as e:
-                print(f"Error loading file {base_name}: {str(e)}")
-                raise e
-
+            img = Image.open((self.dataset_dir + '/images/' + self.train_list[idx] + '.bmp').replace('//', '/')).convert('I')
+            mask = Image.open((self.dataset_dir + '/masks/' + self.train_list[idx] + '.bmp').replace('//', '/'))
         img = Normalized(np.array(img, dtype=np.float32), self.img_norm_cfg)  # convert PIL to numpy  and  normalize
         mask = np.array(mask, dtype=np.float32) / 255.0
         if len(mask.shape) > 2:
             mask = mask[:, :, 0]
 
-        # Apply random noise if enabled
-        if self.add_noise:
-            noise = np.random.normal(0, self.noise_std)
-            img += noise
+        # rnd_bn = np.random.normal(0, 0.03)#0.03
+        # img += rnd_bn
+        #
+        # minm = img.min()
+        # rng = img.max() - minm
+        # gamma = np.random.uniform(0.5, 1.6)
+        # x=((img - minm) / rng)
+        # img = np.power(x, gamma)
+        # img = img * rng + minm
 
-        # Apply gamma correction if enabled
-        if self.add_gamma:
-            min_val = img.min()
-            max_val = img.max()
-            gamma = np.random.uniform(self.gamma_range[0], self.gamma_range[1])
-            img = np.power(((img - min_val) / (max_val - min_val)), gamma)
-            img = img * (max_val - min_val) + min_val
+        img_patch, mask_patch = random_crop(img, mask, self.patch_size, pos_prob=0.5)  # Pad the shorter side to 256, randomly crop 256 along the longer side, output 256x256
 
-        img_patch, mask_patch = random_crop(img, mask, self.patch_size, pos_prob=0.5)  # Pad the shorter side first, then randomly crop to get 256x256 output
-
-        img_patch, mask_patch = self.transform(img_patch, mask_patch)  # Data augmentation with flipping
-        img_patch, mask_patch = img_patch[np.newaxis, :], mask_patch[np.newaxis, :]  # 升维
-        img_patch = torch.from_numpy(np.ascontiguousarray(img_patch))  # numpy 转tensor
-        mask_patch = torch.from_numpy(np.ascontiguousarray(mask_patch))  # numpy 转tensor
+        img_patch, mask_patch = self.tranform(img_patch, mask_patch)  # Apply flip augmentation
+        img_patch, mask_patch = img_patch[np.newaxis, :], mask_patch[np.newaxis, :]  # Add channel dimension
+        img_patch = torch.from_numpy(np.ascontiguousarray(img_patch))  # Convert numpy array to tensor
+        mask_patch = torch.from_numpy(np.ascontiguousarray(mask_patch))  # Convert numpy array to tensor
         return img_patch, mask_patch
 
     def __len__(self):
         return len(self.train_list)
 
-# TrainSetLoader02 functionality is now integrated into main TrainSetLoader class
-# Use TrainSetLoader(dataset_dir, dataset_name, patch_size, add_noise=True) for noise augmentation
+class TrainSetLoader02(Dataset):
+    def __init__(self, dataset_dir, dataset_name, patch_size, img_norm_cfg=None):
+        super(TrainSetLoader).__init__()
+        self.dataset_name = dataset_name
+        self.dataset_dir = dataset_dir + '/' + dataset_name
+        self.patch_size = patch_size
+        with open(self.dataset_dir + '/img_idx/train_' + dataset_name + '.txt', 'r') as f:
+            self.train_list = f.read().splitlines()
+        if img_norm_cfg == None:
+            self.img_norm_cfg = get_img_norm_cfg(dataset_name, dataset_dir)
+        else:
+            self.img_norm_cfg = img_norm_cfg
+        self.tranform = augumentation()
+
+    def __getitem__(self, idx):
+        try:
+            img = Image.open((self.dataset_dir + '/images/' + self.train_list[idx] + '.png').replace('//', '/')).convert(
+                'I')  # read image base on version ”I“
+            # img = Image.open((self.dataset_dir + '/images/' + self.train_list[idx] + '.png').replace('//','/'))
+            mask = Image.open((self.dataset_dir + '/masks/' + self.train_list[idx] + '.png').replace('//', '/'))
+        except:
+            img = Image.open((self.dataset_dir + '/images/' + self.train_list[idx] + '.bmp').replace('//', '/')).convert('I')
+            mask = Image.open((self.dataset_dir + '/masks/' + self.train_list[idx] + '.bmp').replace('//', '/'))
+        img = Normalized(np.array(img, dtype=np.float32), self.img_norm_cfg)  # convert PIL to numpy  and  normalize
+        mask = np.array(mask, dtype=np.float32) / 255.0
+        if len(mask.shape) > 2:
+            mask = mask[:, :, 0]
+
+        rnd_bn = np.random.normal(0, 0.03)#0.03
+        img += rnd_bn
+        #
+        # minm = img.min()
+        # rng = img.max() - minm
+        # gamma = np.random.uniform(0.5, 1.6)
+        # x=((img - minm) / rng)
+        # img = np.power(x, gamma)
+        # img = img * rng + minm
+
+        img_patch, mask_patch = random_crop(img, mask, self.patch_size, pos_prob=0.5)  # Pad the shorter side to 256, randomly crop 256 along the longer side, output 256x256
+
+        img_patch, mask_patch = self.tranform(img_patch, mask_patch)  # Apply flip augmentation
+        img_patch, mask_patch = img_patch[np.newaxis, :], mask_patch[np.newaxis, :]  # Add channel dimension
+        img_patch = torch.from_numpy(np.ascontiguousarray(img_patch))  # Convert numpy array to tensor
+        mask_patch = torch.from_numpy(np.ascontiguousarray(mask_patch))  # Convert numpy array to tensor
+        return img_patch, mask_patch
+
+    def __len__(self):
+        return len(self.train_list)
 
 
-# TrainSetLoader03 functionality is now integrated into main TrainSetLoader class
-# Use TrainSetLoader(dataset_dir, dataset_name, patch_size, add_gamma=True) for gamma correction augmentation
+class TrainSetLoader03(Dataset):
+    def __init__(self, dataset_dir, dataset_name, patch_size, img_norm_cfg=None):
+        super(TrainSetLoader).__init__()
+        self.dataset_name = dataset_name
+        self.dataset_dir = dataset_dir + '/' + dataset_name
+        self.patch_size = patch_size
+        with open(self.dataset_dir + '/img_idx/train_' + dataset_name + '.txt', 'r') as f:
+            self.train_list = f.read().splitlines()
+        if img_norm_cfg == None:
+            self.img_norm_cfg = get_img_norm_cfg(dataset_name, dataset_dir)
+        else:
+            self.img_norm_cfg = img_norm_cfg
+        self.tranform = augumentation()
+
+    def __getitem__(self, idx):
+        try:
+            img = Image.open((self.dataset_dir + '/images/' + self.train_list[idx] + '.png').replace('//', '/')).convert(
+                'I')  # read image base on version ”I“
+            # img = Image.open((self.dataset_dir + '/images/' + self.train_list[idx] + '.png').replace('//','/'))
+            mask = Image.open((self.dataset_dir + '/masks/' + self.train_list[idx] + '.png').replace('//', '/'))
+        except:
+            img = Image.open((self.dataset_dir + '/images/' + self.train_list[idx] + '.bmp').replace('//', '/')).convert('I')
+            mask = Image.open((self.dataset_dir + '/masks/' + self.train_list[idx] + '.bmp').replace('//', '/'))
+        img = Normalized(np.array(img, dtype=np.float32), self.img_norm_cfg)  # convert PIL to numpy  and  normalize
+        mask = np.array(mask, dtype=np.float32) / 255.0
+        if len(mask.shape) > 2:
+            mask = mask[:, :, 0]
+
+        # rnd_bn = np.random.normal(0, 0.03)#0.03
+        # img += rnd_bn
+
+        minm = img.min()
+        rng = img.max() - minm
+        gamma = np.random.uniform(0.5, 1.6)
+        x=((img - minm) / rng)
+        img = np.power(x, gamma)
+        img = img * rng + minm
+
+        img_patch, mask_patch = random_crop(img, mask, self.patch_size, pos_prob=0.5)  # Pad the shorter side to 256, randomly crop 256 along the longer side, output 256x256
+
+        img_patch, mask_patch = self.tranform(img_patch, mask_patch)  # Apply flip augmentation
+        img_patch, mask_patch = img_patch[np.newaxis, :], mask_patch[np.newaxis, :]  # Add channel dimension
+        img_patch = torch.from_numpy(np.ascontiguousarray(img_patch))  # Convert numpy array to tensor
+        mask_patch = torch.from_numpy(np.ascontiguousarray(mask_patch))  # Convert numpy array to tensor
+        return img_patch, mask_patch
+
+    def __len__(self):
+        return len(self.train_list)
 
 
-# TrainSetLoader04 functionality is now integrated into main TrainSetLoader class
-# Use TrainSetLoader(dataset_dir, dataset_name, patch_size, add_noise=True, add_gamma=True) for both augmentations
+class TrainSetLoader04(Dataset):
+    def __init__(self, dataset_dir, dataset_name, patch_size, img_norm_cfg=None):
+        super(TrainSetLoader).__init__()
+        self.dataset_name = dataset_name
+        self.dataset_dir = dataset_dir + '/' + dataset_name
+        self.patch_size = patch_size
+        with open(self.dataset_dir + '/img_idx/train_' + dataset_name + '.txt', 'r') as f:
+            self.train_list = f.read().splitlines()
+        if img_norm_cfg == None:
+            self.img_norm_cfg = get_img_norm_cfg(dataset_name, dataset_dir)
+        else:
+            self.img_norm_cfg = img_norm_cfg
+        self.tranform = augumentation()
+
+    def __getitem__(self, idx):
+        try:
+            img = Image.open((self.dataset_dir + '/images/' + self.train_list[idx] + '.png').replace('//', '/')).convert(
+                'I')  # read image base on version ”I“
+            # img = Image.open((self.dataset_dir + '/images/' + self.train_list[idx] + '.png').replace('//','/'))
+            mask = Image.open((self.dataset_dir + '/masks/' + self.train_list[idx] + '.png').replace('//', '/'))
+        except:
+            img = Image.open((self.dataset_dir + '/images/' + self.train_list[idx] + '.bmp').replace('//', '/')).convert('I')
+            mask = Image.open((self.dataset_dir + '/masks/' + self.train_list[idx] + '.bmp').replace('//', '/'))
+        img = Normalized(np.array(img, dtype=np.float32), self.img_norm_cfg)  # convert PIL to numpy  and  normalize
+        mask = np.array(mask, dtype=np.float32) / 255.0
+        if len(mask.shape) > 2:
+            mask = mask[:, :, 0]
+
+        rnd_bn = np.random.normal(0, 0.03)#0.03
+        img += rnd_bn
+
+        minm = img.min()
+        rng = img.max() - minm
+        gamma = np.random.uniform(0.5, 1.6)
+        x=((img - minm) / rng)
+        img = np.power(x, gamma)
+        img = img * rng + minm
+
+        img_patch, mask_patch = random_crop(img, mask, self.patch_size, pos_prob=0.5)  # Pad the shorter side to 256, randomly crop 256 along the longer side, output 256x256
+
+        img_patch, mask_patch = self.tranform(img_patch, mask_patch)  # Apply flip augmentation
+        img_patch, mask_patch = img_patch[np.newaxis, :], mask_patch[np.newaxis, :]  # Add channel dimension
+        img_patch = torch.from_numpy(np.ascontiguousarray(img_patch))  # Convert numpy array to tensor
+        mask_patch = torch.from_numpy(np.ascontiguousarray(mask_patch))  # Convert numpy array to tensor
+        return img_patch, mask_patch
+
+    def __len__(self):
+        return len(self.train_list)
 
 class TestSetLoader(Dataset):
     def __init__(self, dataset_dir, train_dataset_name, test_dataset_name, img_norm_cfg=None):
         super(TestSetLoader).__init__()
-        self.dataset_dir = dataset_dir 
+        self.dataset_dir = dataset_dir + '/' + test_dataset_name
         with open(self.dataset_dir + '/img_idx/test_' + test_dataset_name + '.txt', 'r') as f:
         # with open(r'D:\05TGARS\Upload\datasets\SIRST3\img_idx\val.txt', 'r') as f:
             self.test_list = f.read().splitlines()
@@ -129,34 +218,11 @@ class TestSetLoader(Dataset):
 
     def __getitem__(self, idx):
         try:
-            base_name = self.test_list[idx]
-            img_pattern = f"{self.dataset_dir}/images/{'._' if '._' in base_name else ''}{base_name}.png"
-            mask_pattern = f"{self.dataset_dir}/masks/{'._' if '._' in base_name else ''}{base_name}*pixels0.png"
-            
-            mask_files = glob.glob(mask_pattern.replace('//', '/'))
-            if mask_files:
-                mask_path = mask_files[0]
-            else:
-                mask_path = f"{self.dataset_dir}/masks/{base_name}.png".replace('//', '/')
-            
-            img = Image.open(img_pattern.replace('//', '/')).convert('I')
-            mask = Image.open(mask_path)
+            img = Image.open((self.dataset_dir + '/images/' + self.test_list[idx] + '.png').replace('//', '/')).convert('I')
+            mask = Image.open((self.dataset_dir + '/masks/' + self.test_list[idx] + '.png').replace('//', '/'))
         except:
-            try:
-                img_pattern = f"{self.dataset_dir}/images/{'._' if '._' in base_name else ''}{base_name}.bmp"
-                mask_pattern = f"{self.dataset_dir}/masks/{'._' if '._' in base_name else ''}{base_name}*pixels0.bmp"
-                
-                mask_files = glob.glob(mask_pattern.replace('//', '/'))
-                if mask_files:
-                    mask_path = mask_files[0]
-                else:
-                    mask_path = f"{self.dataset_dir}/masks/{base_name}.bmp".replace('//', '/')
-                
-                img = Image.open(img_pattern.replace('//', '/')).convert('I')
-                mask = Image.open(mask_path)
-            except Exception as e:
-                print(f"Error loading file {base_name}: {str(e)}")
-                raise e
+            img = Image.open((self.dataset_dir + '/images/' + self.test_list[idx] + '.bmp').replace('//', '/')).convert('I')
+            mask = Image.open((self.dataset_dir + '/masks/' + self.test_list[idx] + '.bmp').replace('//', '/'))
 
         img = Normalized(np.array(img, dtype=np.float32), self.img_norm_cfg)
         mask = np.array(mask, dtype=np.float32) / 255.0
@@ -215,32 +281,15 @@ class EvalSetLoader(Dataset):
         return len(self.test_list)
 
 
-class Augmentation(object):
-    """Data augmentation class for random transformations."""
-
-    def __call__(self, input_img, target_img):
-        """Apply random augmentations to input and target images.
-
-        Args:
-            input_img: Input image array
-            target_img: Target/label image array
-
-        Returns:
-            Tuple of (augmented_input, augmented_target)
-        """
-        # Horizontal flip (left-right)
-        if random.random() < 0.5:
-            input_img = input_img[::-1, :]
-            target_img = target_img[::-1, :]
-
-        # Vertical flip (up-down)
-        if random.random() < 0.5:
-            input_img = input_img[:, ::-1]
-            target_img = target_img[:, ::-1]
-
-        # Transpose (swap axes)
-        if random.random() < 0.5:
-            input_img = input_img.transpose(1, 0)
-            target_img = target_img.transpose(1, 0)
-
-        return input_img, target_img
+class augumentation(object):
+    def __call__(self, input, target):
+        if random.random() < 0.5:  # Horizontal flip
+            input = input[::-1, :]
+            target = target[::-1, :]
+        if random.random() < 0.5:  # Vertical flip
+            input = input[:, ::-1]
+            target = target[:, ::-1]
+        if random.random() < 0.5:  # Transpose flip
+            input = input.transpose(1, 0)
+            target = target.transpose(1, 0)
+        return input, target

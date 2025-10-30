@@ -63,10 +63,10 @@ class mIoU():
     def update(self, preds, labels):
         correct, labeled = batch_pix_accuracy(preds, labels)
         inter, union = batch_intersection_union(preds, labels)
-        self.total_correct += correct  # 预测正确的像素数
-        self.total_label += labeled  # GT目标的像素数
-        self.total_inter += inter  # 交集
-        self.total_union += union  # 并集
+        self.total_correct += correct  # Number of correctly predicted pixels
+        self.total_label += labeled  # Number of ground-truth target pixels
+        self.total_inter += inter  # Intersection
+        self.total_union += union  # Union
 
     def get(self):
         pixAcc = 1.0 * self.total_correct / (np.spacing(1) + self.total_label)
